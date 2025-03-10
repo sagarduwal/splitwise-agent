@@ -5,6 +5,8 @@ from typing import Dict, List, Optional, Any, Union, Callable
 from datetime import datetime
 import json
 
+from splitwise import Expense  # Import the Expense class
+
 
 class SplitwiseAgent(BaseAgent):
     """Agent responsible for interacting with the Splitwise API"""
@@ -47,29 +49,27 @@ class SplitwiseAgent(BaseAgent):
         group_id: Optional[int] = None,
         split_equally: bool = True,
         users: Optional[List[Dict]] = None,
-        analyze: bool = True,
+        currency_code: str = "USD",
+        analyze: bool = False,
+        receipt_data: Optional[Dict] = None,
     ) -> dict:
-        """
-        Create a new expense in Splitwise
-
-        Args:
-            description: Description of the expense
-            amount: Total amount of the expense
-            group_id: Optional group ID to create expense in
-            split_equally: Whether to split the expense equally
-            users: Optional list of user splits if not equal
-
-        Returns:
-            dict: Created expense details
-        """
+        """Create a new expense in Splitwise"""
         try:
-            expense = self.splitwise.createExpense(
-                description=description,
-                amount=amount,
-                group_id=group_id,
-                split_equally=split_equally,
-                users=users or [],
-            )
+            expense = Expense()
+            expense.setGroupId(group_id)
+            expense.setSplitEqually(split_equally)
+            expense.setCost(amount)
+            expense.setCurrencyCode(currency_code)
+            expense.setDate(datetime.now().isoformat())
+            # expense.setReceipt(receipt_data or {})
+            expense.setDescription(description)
+            expense.setUsers(users or [])
+
+            expense, errors = self.splitwise.createExpense(expense)
+
+            if errors:
+                raise Exception(f"Failed to create expense: {errors}")
+
             expense_data = {
                 "id": expense.getId(),
                 "description": expense.getDescription(),
@@ -82,8 +82,14 @@ class SplitwiseAgent(BaseAgent):
                 analysis = self._analyze_expense_data(expense_data)
                 expense_data.update(analysis)
 
+            if receipt_data:
+                # Analyze the expense for better categorization and splitting
+                analysis = self._analyze_expense_data(expense_data)
+                expense_data.update(analysis)
+
             return expense_data
         except Exception as e:
+            print(e)
             raise Exception(f"Failed to create expense: {str(e)}")
 
     def get_groups(self) -> List[dict]:
@@ -95,9 +101,23 @@ class SplitwiseAgent(BaseAgent):
                     "id": group.getId(),
                     "name": group.getName(),
                     "members": [
-                        {"id": member.getId(), "name": member.getFirstName()}
+                        {
+                            "id": member.getId(),
+                            "name": member.getFirstName(),
+                            # "balance": member.getBalance(),
+                        }
                         for member in group.getMembers()
                     ],
+                    "created_at": group.getCreatedAt(),
+                    "total": (
+                        float(
+                            self.splitwise.getExpenses(group_id=group.getId())[
+                                0
+                            ].getCost()
+                        )
+                        if self.splitwise.getExpenses(group_id=group.getId())
+                        else 0
+                    ),
                 }
                 for group in groups
             ]
@@ -140,8 +160,16 @@ class SplitwiseAgent(BaseAgent):
                 {
                     "id": expense.getId(),
                     "description": expense.getDescription(),
-                    "amount": expense.getCost(),
+                    "amount": float(expense.getCost()),
                     "date": expense.getDate(),
+                    # "group": (
+                    #     {
+                    #         "id": expense.getGroupId(),
+                    #         "name": expense.getGroup().getName(),
+                    #     }
+                    #     if expense.getGroupId()
+                    #     else None
+                    # ),
                     "created_by": {
                         "id": expense.getCreatedBy().getId(),
                         "name": expense.getCreatedBy().getFirstName(),

@@ -2,10 +2,13 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from typing import List, Optional
 from src.agents.receipt_agent import ReceiptAgent
 from src.agents.splitwise_agent import SplitwiseAgent
+from typing import Dict, Optional
+from pydantic import BaseModel
 
 router = APIRouter()
 receipt_agent = ReceiptAgent()
 splitwise_agent = SplitwiseAgent()
+
 
 @router.post("/receipts/process")
 async def process_receipt(file: UploadFile = File(...)):
@@ -19,26 +22,32 @@ async def process_receipt(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.post("/expenses")
-async def create_expense(
-    description: str,
-    amount: float,
-    group_id: Optional[int] = None,
+
+class ExpenseCreateRequest(BaseModel):
+    description: str
+    amount: float
+    group_id: Optional[int] = None
     split_equally: bool = True
-):
+    receipt_data: Optional[Dict] = None
+
+
+@router.post("/expenses")
+async def create_expense(request: ExpenseCreateRequest):
     """
     Create a new Splitwise expense
     """
     try:
         result = splitwise_agent.create_expense(
-            description=description,
-            amount=amount,
-            group_id=group_id,
-            split_equally=split_equally
+            description=request.description,
+            amount=request.amount,
+            group_id=request.group_id,
+            split_equally=request.split_equally,
+            receipt_data=request.receipt_data,
         )
         return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @router.get("/groups")
 async def get_groups():
@@ -51,6 +60,7 @@ async def get_groups():
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+
 @router.get("/friends")
 async def get_friends():
     """
@@ -61,6 +71,7 @@ async def get_friends():
         return {"status": "success", "data": friends}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @router.get("/expenses")
 async def get_expenses(group_id: Optional[int] = None, limit: int = 20):
