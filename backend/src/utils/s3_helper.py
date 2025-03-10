@@ -145,7 +145,7 @@ class S3Helper:
             # Generate a unique filename using UUID and timestamp
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             unique_id = str(uuid.uuid4())
-            filename = f"receipts/{timestamp}_{unique_id}.png"
+            filename = f"receipts/{timestamp}_{unique_id}.jpg"
             self.logger.info(f"Generated filename: {filename}")
 
             # Upload the file with public-read ACL
@@ -154,12 +154,12 @@ class S3Helper:
                 Bucket=self.bucket_name,
                 Key=filename,
                 Body=image_data,
-                ContentType="image/png",
+                ContentType="image/jpeg",
                 ACL="public-read",
                 Metadata={
                     "upload_timestamp": timestamp,
                     "content_type": "receipt_image",
-                    "id": unique_id
+                    "id": unique_id,
                 },
             )
             self.logger.info(f"Upload to S3 successful for key: {filename}")
@@ -167,24 +167,26 @@ class S3Helper:
             # Generate and verify the URL
             # Format: https://{bucket}.s3.{region}.amazonaws.com/{key}
             region = os.getenv("AWS_REGION", "us-east-1")
-            
+
             # Use the correct URL format for S3 objects
             # This format is compatible with the VisionTool
             url = f"https://{self.bucket_name}.s3.{region}.amazonaws.com/{filename}"
-            
+
             # Log the URL and ensure it's properly formatted for vision tools
             self.logger.info(f"Successfully uploaded image to {url}")
-            
+
             # Verify the URL is accessible
             if not self.verify_image_url(url):
                 self.logger.warning(f"Uploaded image URL verification failed: {url}")
                 # Try an alternative URL format if verification failed
-                alt_url = f"https://s3.{region}.amazonaws.com/{self.bucket_name}/{filename}"
+                alt_url = (
+                    f"https://s3.{region}.amazonaws.com/{self.bucket_name}/{filename}"
+                )
                 self.logger.info(f"Trying alternative URL format: {alt_url}")
                 if self.verify_image_url(alt_url):
                     self.logger.info(f"Alternative URL format verified: {alt_url}")
                     return alt_url
-            
+
             return url
 
         except ClientError as e:

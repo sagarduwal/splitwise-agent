@@ -4,9 +4,14 @@ from typing import Optional, Dict, Any, List, Union
 from dotenv import load_dotenv
 import os
 import json
+import logging
 
 # Load environment variables
 load_dotenv()
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class BaseAgent(ABC):
@@ -30,6 +35,7 @@ class BaseAgent(ABC):
                 "verbose": os.getenv("DEBUG", "False").lower() == "true",
             }
         except ValueError as e:
+            logger.error(f"Invalid configuration value: {str(e)}")
             raise ValueError(f"Invalid configuration value: {str(e)}")
 
     @abstractmethod
@@ -40,30 +46,11 @@ class BaseAgent(ABC):
     def create_base_agent(self, **kwargs) -> Agent:
         """Create a base agent with common configuration"""
         # Remove parameters that are set in __init__ or config to avoid conflicts
-        for param in [
-            "name",
-            "role",
-            "goal",
-            "verbose",
-            "llm_model",
-            "temperature",
-            "max_iterations",
-        ]:
-            kwargs.pop(param, None)
+        self._remove_conflicting_params(kwargs)
 
         # Format tools as basic functions
         if "tools" in kwargs:
-            tools = kwargs.pop("tools", [])
-            tool_functions = []
-            for tool in tools:
-                if callable(tool):
-                    tool_functions.append(
-                        {
-                            "name": tool.__name__,
-                            "function": lambda *args, t=tool: t(*args),
-                        }
-                    )
-            kwargs["tools"] = tool_functions
+            kwargs["tools"] = self._format_tools(kwargs.pop("tools", []))
 
         try:
             return Agent(
@@ -78,13 +65,13 @@ class BaseAgent(ABC):
                 **kwargs,
             )
         except Exception as e:
+            logger.error(f"Failed to create agent: {str(e)}. Config: {self.config}")
             raise Exception(f"Failed to create agent: {str(e)}. Config: {self.config}")
 
     def create_task(
         self,
         description: str,
         expected_output: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
         agent: Optional[str] = None,
         tools: Optional[List[str]] = None,
     ) -> Task:
@@ -93,7 +80,6 @@ class BaseAgent(ABC):
         Args:
             description: Task description
             expected_output: Expected format and structure of the output
-            context: Optional context data
             agent: Optional agent to use for the task
             tools: Optional tools to use for the task
 
@@ -103,35 +89,14 @@ class BaseAgent(ABC):
         Raises:
             Exception: If task creation fails
         """
+        self._validate_task_params(description, expected_output)
+
+        task_args = self._prepare_task_args(description, expected_output, agent, tools)
+
         try:
-            # Ensure context is a list with a single item containing content
-            task_context = []
-            if context:
-                try:
-                    # Try to convert to JSON string first
-                    content = json.dumps(context)
-                except:
-                    # If JSON conversion fails, use string representation
-                    content = str(context)
-                task_context = [{"content": content}]
-
-            # Create task with required fields
-            task_args = {
-                "description": description,
-                "agent": agent or self.agent,
-                "context": task_context,
-            }
-
-            # Add expected_output if provided
-            if expected_output:
-                task_args["expected_output"] = expected_output
-
-            # Add tools if provided
-            if tools:
-                task_args["tools"] = tools
-
             return Task(**task_args)
         except Exception as e:
+            logger.error(f"Failed to create task: {str(e)}")
             raise Exception(f"Failed to create task: {str(e)}")
 
     def execute_tasks(self, tasks: List[Task]) -> List[str]:
@@ -140,21 +105,11 @@ class BaseAgent(ABC):
             return []
 
         try:
-            # Create a crew with the agent and tasks
             crew = self.get_crew(tasks)
-
-            # Execute all tasks through the crew
             results = crew.kickoff()
-
-            # Handle single result vs multiple results
-            if isinstance(results, str):
-                return [results]
-            elif isinstance(results, list):
-                return results
-            else:
-                return [str(results)]
-
+            return self._handle_results(results)
         except Exception as e:
+            logger.error(f"Tasks failed: {str(e)}")
             return [f"Tasks failed: {str(e)}"]
 
     @property
@@ -173,12 +128,11 @@ class BaseAgent(ABC):
         Returns:
             Crew: Configured crew instance with the agent and tasks
         """
-        # Create a new crew with the agent and tasks
         crew = Crew(
             agents=[self.agent],
             tasks=tasks,
             verbose=self.config.get("verbose", False),
-            process=Process.sequential,  # Use sequential process for predictable execution
+            process=Process.sequential,
         )
         return crew
 
@@ -194,13 +148,56 @@ class BaseAgent(ABC):
         try:
             crew = self.get_crew([task])
             result = crew.kickoff()
-
-            # Handle different result types
-            if isinstance(result, list) and len(result) > 0:
-                return result[0]
-            elif isinstance(result, str):
-                return result
-            else:
-                return str(result)
+            return self._handle_single_result(result)
         except Exception as e:
+            logger.error(f"Task execution failed: {str(e)}")
             raise Exception(f"Task execution failed: {str(e)}")
+
+    def _remove_conflicting_params(self, kwargs):
+        for param in [
+            "name",
+            "role",
+            "goal",
+            "verbose",
+            "llm_model",
+            "temperature",
+            "max_iterations",
+        ]:
+            kwargs.pop(param, None)
+
+    def _format_tools(self, tools):
+        return [
+            {"name": tool.__name__, "function": lambda *args, t=tool: t(*args)}
+            for tool in tools
+            if callable(tool)
+        ]
+
+    def _validate_task_params(self, description, expected_output):
+        if not description:
+            raise ValueError("Task description cannot be empty.")
+        if expected_output and not isinstance(expected_output, str):
+            raise ValueError("Expected output must be a string.")
+
+    def _prepare_task_args(self, description, expected_output, agent, tools):
+        task_args = {"description": description, "agent": agent or self.agent}
+        if expected_output:
+            task_args["expected_output"] = expected_output
+        if tools:
+            task_args["tools"] = tools
+        return task_args
+
+    def _handle_results(self, results):
+        if isinstance(results, str):
+            return [results]
+        elif isinstance(results, list):
+            return results
+        else:
+            return [str(results)]
+
+    def _handle_single_result(self, result):
+        if isinstance(result, list) and len(result) > 0:
+            return result[0]
+        elif isinstance(result, str):
+            return result
+        else:
+            return str(result)

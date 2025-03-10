@@ -158,7 +158,7 @@ class SplitwiseAgent(BaseAgent):
         except Exception as e:
             raise Exception(f"Failed to get expenses: {str(e)}")
 
-    def create_task(
+    def create_splitwise_task(
         self,
         description: str,
         expected_output: Optional[str] = None,
@@ -171,7 +171,7 @@ class SplitwiseAgent(BaseAgent):
     ) -> Task:
         """
         Create a new task for the Splitwise agent with financial data context
-        
+
         Args:
             description: Task description
             expected_output: Expected format and structure of the output
@@ -181,45 +181,45 @@ class SplitwiseAgent(BaseAgent):
             expense_data: Optional expense data to include in context
             group_data: Optional group data to include in context
             splitwise_functions: Optional Splitwise API functions to include as tools
-            
+
         Returns:
             Task: Configured task instance
-            
+
         Raises:
             Exception: If task creation fails
         """
         try:
             # Prepare context with financial data if provided
             task_context = context or {}
-            
+
             if expense_data:
                 task_context["expense_data"] = expense_data
-                
+
             if group_data:
                 task_context["group_data"] = group_data
-                
+
             # Add Splitwise API functions as tools if provided
             task_tools = tools or []
-            
+
             if splitwise_functions:
                 for func in splitwise_functions:
                     if callable(func):
                         task_tools.append(func)
-            
+
             # Call the parent class's create_task method with our modifications
             return super().create_task(
                 description=description,
                 expected_output=expected_output,
                 context=task_context,
                 agent=agent,
-                tools=task_tools
+                tools=task_tools,
             )
         except Exception as e:
             raise Exception(f"Failed to create Splitwise task: {str(e)}")
-            
+
     def _analyze_expense_data(self, expense_data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze expense data to provide intelligent categorization and insights"""
-        analysis_task = self.create_task(
+        analysis_task = self.create_splitwise_task(
             description=(
                 "Analyze this expense and provide the following insights:\n"
                 "1. Expense category (e.g., food, transport, utilities)\n"
@@ -241,7 +241,7 @@ class SplitwiseAgent(BaseAgent):
         self, expense_data: Dict[str, Any], group_info: Optional[Dict] = None
     ) -> Dict[str, Any]:
         """Suggest an optimal splitting strategy based on expense and group data"""
-        split_task = self.create_task(
+        split_task = self.create_splitwise_task(
             description=(
                 "Analyze this expense and group information to suggest the optimal splitting strategy:\n"
                 "1. Determine if equal split is appropriate\n"
@@ -267,7 +267,7 @@ class SplitwiseAgent(BaseAgent):
     ) -> List[Dict[str, Any]]:
         """Process a batch of expenses with intelligent analysis"""
         tasks = [
-            self.create_task(
+            self.create_splitwise_task(
                 description=(
                     "Process this expense with detailed analysis:\n"
                     "1. Categorize the expense\n"

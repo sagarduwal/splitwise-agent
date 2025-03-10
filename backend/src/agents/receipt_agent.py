@@ -67,7 +67,7 @@ class ReceiptAgent(BaseAgent):
 
             print(f"Processing receipt with image URL: {image_url}")
             # Create the task with the vision tool
-            text_task = self.create_task(
+            text_task = self.create_receipt_task(
                 description=(
                     "Extract all visible text from the receipt image, maintaining the original "
                     "layout and structure as much as possible. Pay special attention to:\n"
@@ -88,7 +88,7 @@ class ReceiptAgent(BaseAgent):
             raw_text_formatted = raw_text.strip()
 
             # Detailed analysis task
-            analysis_task = self.create_task(
+            analysis_task = self.create_receipt_task(
                 description=(
                     "Analyze the following receipt text and extract information in JSON format:\n\n"
                     "Receipt Text:\n"
@@ -133,7 +133,7 @@ class ReceiptAgent(BaseAgent):
 
             except json.JSONDecodeError:
                 # Fallback task for unstructured response
-                fallback_task = self.create_task(
+                fallback_task = self.create_receipt_task(
                     description=(
                         "The previous analysis returned unstructured data. Please analyze this text "
                         "and return ONLY a valid JSON object with the following structure:\n"
@@ -177,7 +177,7 @@ class ReceiptAgent(BaseAgent):
         if not items:
             return items
 
-        categorization_task = self.create_task(
+        categorization_task = self.create_receipt_task(
             description=(
                 "Analyze these receipt items and enhance them with the following information:\n"
                 "1. Add an 'expense_category' field (e.g., 'food', 'transport', 'entertainment')\n"
@@ -213,7 +213,7 @@ class ReceiptAgent(BaseAgent):
                 for item in items
             ]
 
-    def create_task(
+    def create_receipt_task(
         self,
         description: str,
         expected_output: Optional[str] = None,
@@ -269,7 +269,7 @@ class ReceiptAgent(BaseAgent):
         Returns:
             Dict: Split suggestions and reasoning
         """
-        split_task = self.create_task(
+        split_task = self.create_receipt_task(
             description=(
                 "Analyze this receipt data and suggest how to split the expense:\n"
                 "1. Determine if this is likely a personal, shared, or business expense\n"
