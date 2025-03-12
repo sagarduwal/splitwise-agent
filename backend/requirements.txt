@@ -2,12 +2,12 @@ fastapi==0.104.1
 uvicorn==0.24.0
 python-dotenv==1.0.0
 splitwise==2.4.0
-crewai[tools]>=0.11.0
-crewai-tools>=0.0.10
+crewai==0.105.0
+crewai-tools==0.37.0
 python-multipart==0.0.6
 pillow==10.1.0
-pydantic==2.5.2
+pydantic==2.10.6
 python-jose[cryptography]==3.3.0
-openai
-langchain
+openai==1.66.2
+langchain==0.3.20
 boto3>=1.34.0
